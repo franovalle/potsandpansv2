@@ -81,6 +81,46 @@ serve(async (req) => {
       full_name: rosterEntry.full_name,
     });
 
+    // Auto-assign eligible donations to new HHA
+    const { data: activeCampaigns } = await supabaseAdmin
+      .from("donation_campaigns")
+      .select("id, quantity, agency_id")
+      .eq("agency_id", rosterEntry.agency_id)
+      .gte("redemption_end_date", new Date().toISOString().split("T")[0]);
+
+    if (activeCampaigns && activeCampaigns.length > 0) {
+      for (const campaign of activeCampaigns) {
+        // Count existing claims for this campaign
+        const { count } = await supabaseAdmin
+          .from("donation_claims")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", campaign.id);
+
+        const claimed = count || 0;
+        const available = campaign.quantity - claimed;
+
+        if (available > 0) {
+          // Check this HHA doesn't already have a claim for this campaign
+          const { data: existingClaim } = await supabaseAdmin
+            .from("donation_claims")
+            .select("id")
+            .eq("campaign_id", campaign.id)
+            .eq("hha_id", userId)
+            .maybeSingle();
+
+          if (!existingClaim) {
+            await supabaseAdmin.from("donation_claims").insert({
+              campaign_id: campaign.id,
+              hha_id: userId,
+              status: "pending",
+              expires_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+            });
+            break; // Only assign one donation at a time
+          }
+        }
+      }
+    }
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

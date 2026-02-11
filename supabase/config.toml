@@ -1,0 +1,19 @@
+project_id = "dqvjkwrrxbtyziliyrkh"
+
+[functions.signup-hha]
+verify_jwt = false
+
+[functions.signup-business]
+verify_jwt = false
+
+[functions.validate-qr]
+verify_jwt = false
+
+[functions.distribute-donations]
+verify_jwt = false
+
+[functions.claim-donation]
+verify_jwt = false
+
+[functions.seed-admin]
+verify_jwt = false

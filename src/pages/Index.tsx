@@ -10,7 +10,7 @@ const Index = () => {
         <div className="container mx-auto px-4 py-20 md:py-32">
           <div className="max-w-3xl mx-auto text-center animate-fade-in">
             <h1 className="text-4xl md:text-6xl font-bold font-heading text-foreground mb-6 leading-tight">
-              Supporting Bronx Home Health Aides through verified business donations
+              Connecting businesses with Bronx healthcare heroes
             </h1>
             <p className="text-lg md:text-xl text-muted-foreground mb-2 font-body">
               Connecting caring businesses with the heroes who serve our community.

@@ -113,7 +113,7 @@ const HHADashboard = () => {
     <Layout>
       <DashboardHeader />
       <div className="container mx-auto px-4 py-8 max-w-2xl">
-        <h1 className="text-3xl font-bold font-heading mb-6 text-foreground">Your Dashboard</h1>
+        <h1 className="text-3xl font-bold font-heading mb-6 text-foreground">HHA DASHBOARD</h1>
 
         {/* Active claimed donation with QR */}
         {activeClaim && (

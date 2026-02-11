@@ -14,8 +14,8 @@ const DashboardHeader = () => {
           <img src={logo} alt="Pots & Pans" className="h-10 w-auto" />
         </Link>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground capitalize font-medium px-3 py-1 rounded-full bg-secondary">
-            {role}
+          <span className="text-sm text-muted-foreground font-medium px-3 py-1 rounded-full bg-secondary">
+            {role === "hha" ? "HHA" : role === "admin" ? "Admin" : role === "business" ? "Business" : role}
           </span>
           <Button variant="ghost" size="sm" onClick={signOut} className="gap-2">
             <LogOut className="h-4 w-4" />

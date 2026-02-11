@@ -17,11 +17,26 @@ const HHASignup = () => {
   const [password, setPassword] = useState("");
   const [agencies, setAgencies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingAgencies, setLoadingAgencies] = useState(true);
 
   useEffect(() => {
-    supabase.from("agencies").select("id, name").then(({ data }) => {
-      if (data) setAgencies(data);
-    });
+    const fetchAgencies = async () => {
+      try {
+        console.log("Fetching agencies...");
+        const { data, error } = await supabase.from("agencies").select("id, name");
+        console.log("Agencies response:", { data, error });
+        if (error) {
+          console.error("Error fetching agencies:", error);
+        } else if (data) {
+          setAgencies(data);
+        }
+      } catch (err) {
+        console.error("Unexpected error fetching agencies:", err);
+      } finally {
+        setLoadingAgencies(false);
+      }
+    };
+    fetchAgencies();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -62,8 +77,8 @@ const HHASignup = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agency">Agency</Label>
-                <Select value={agencyId} onValueChange={setAgencyId} required>
-                  <SelectTrigger><SelectValue placeholder="Select your agency" /></SelectTrigger>
+                <Select value={agencyId} onValueChange={setAgencyId} required disabled={loadingAgencies}>
+                  <SelectTrigger><SelectValue placeholder={loadingAgencies ? "Loading agencies..." : "Select your agency"} /></SelectTrigger>
                   <SelectContent>
                     {agencies.map((a) => (
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>

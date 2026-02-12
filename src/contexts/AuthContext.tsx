@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchRole = async (userId: string) => {
+  const fetchRole = async (userId: string, accessToken?: string) => {
     try {
       const result = await Promise.race([
         supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         {
           headers: {
             apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY}`,
           },
         }
       );
@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        await fetchRole(currentUser.id);
+        await fetchRole(currentUser.id, session?.access_token);
       } else {
         setRole(null);
       }
@@ -79,7 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) {
-        await fetchRole(currentUser.id);
+        await fetchRole(currentUser.id, session?.access_token);
       }
       setLoading(false);
     });

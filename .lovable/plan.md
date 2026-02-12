@@ -1,93 +1,58 @@
 
 
-# Fix HHA Dashboard Loading + Speed Up Login
+# Fix Navigation, Add Demo Reset, QR Code Image, and Business Message
 
-## Problem 1: HHA Dashboard Stuck on "Loading"
-The dashboard calls `supabase.from("donation_claims").select(...)` which uses the same Supabase client that hangs. There's no timeout or REST fallback, so `loadingData` never becomes `false`.
+## 1. Navigation Fix -- Remove Duplicate Headers
 
-## Problem 2: Login Timeout Too Long
-The login page waits 8 seconds before trying the REST fallback. This feels unresponsive.
+All three dashboard pages (HHA, Business, Admin) currently render both `<Layout>` (which shows a header with "Log In" link) AND `<DashboardHeader>` (which shows logo + "Log Out"). This creates duplicate logos and shows "Log In" to logged-in users.
 
-## Fixes
+**Fix**: Pass `showNav={false}` to `<Layout>` in all dashboard pages so only `DashboardHeader` (with logo + Log Out) is visible.
 
-### File: `src/pages/HHADashboard.tsx`
-- Add a `Promise.race` timeout (5s) around the Supabase query in `fetchClaims`
-- Add a REST API fallback that fetches claims directly via `fetch()` using the user's access token
-- If both fail, set `loadingData` to `false` anyway so the user sees the "no donations" state instead of infinite loading
+**Files**:
+- `src/pages/HHADashboard.tsx` -- change `<Layout>` to `<Layout showNav={false}>` (3 occurrences: loading state and main return)
+- `src/pages/BusinessDashboard.tsx` -- change `<Layout>` to `<Layout showNav={false}>` (2 occurrences)
+- `src/pages/AdminDashboard.tsx` -- change `<Layout>` to `<Layout showNav={false}>` (2 occurrences)
 
-### File: `src/pages/Login.tsx`
-- Reduce the login timeout from 8 seconds to 4 seconds so the REST fallback kicks in faster
+## 2. HHA Demo Reset -- Fresh Donation Every Login
 
-### File: `src/contexts/AuthContext.tsx`
-- No changes needed -- signOut and fetchRole are already fixed
+Create a new edge function `reset-hha-demo` that:
+- Accepts the HHA user's ID
+- Deletes all existing `donation_claims` for that user
+- Finds the active "Chicken Sandwich" campaign from "Bronx Deli"
+- Creates a fresh `pending` claim with a new token and 3-day expiry
 
-## Technical Details
+In `HHADashboard.tsx`, call this function once before fetching claims (using a `useRef` flag to prevent repeated calls within the same session).
 
-### HHADashboard.tsx - fetchClaims with timeout + fallback
+**Files**:
+- New: `supabase/functions/reset-hha-demo/index.ts`
+- Modified: `src/pages/HHADashboard.tsx` -- add reset call before `fetchClaims`
 
-```typescript
-const fetchClaims = useCallback(async () => {
-  if (!user) return;
-  setLoadingData(true);
+## 3. QR Code -- Real Scannable Image
 
-  let claims: any[] | null = null;
+Replace the text-based token display (lines 172-176 of HHADashboard.tsx) with an actual QR code image using the free QR Server API:
 
-  // Try Supabase client with timeout
-  try {
-    const result = await Promise.race([
-      supabase
-        .from("donation_claims")
-        .select("*, donation_campaigns(*)")
-        .eq("hha_id", user.id)
-        .order("created_at", { ascending: false }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
-    ]);
-    claims = result.data;
-  } catch {
-    // Fallback: direct REST
-    try {
-      const session = await Promise.race([
-        supabase.auth.getSession(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(), 2000)),
-      ]);
-      const token = session?.data?.session?.access_token;
-      if (token) {
-        const res = await fetch(
-          `${SUPABASE_URL}/rest/v1/donation_claims?select=*,donation_campaigns(*)&hha_id=eq.${user.id}&order=created_at.desc`,
-          {
-            headers: {
-              apikey: SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        if (res.ok) claims = await res.json();
-      }
-    } catch {
-      // both failed
-    }
-  }
-
-  if (claims) {
-    const typed = claims as unknown as ClaimWithCampaign[];
-    setPendingClaim(typed.find((c) => c.status === "pending") || null);
-    const active = typed.find((c) => c.status === "claimed");
-    setActiveClaim(active || null);
-    if (active) setQrToken(active.token);
-    setHistory(typed.filter((c) => c.status === "redeemed" || c.status === "expired"));
-  }
-  setLoadingData(false);
-}, [user]);
+```
+https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={token}
 ```
 
-The REST fallback needs the access token. Instead of calling `getSession()` (which can also hang), we'll store the token from AuthContext. Actually, since `getSession` can hang too, the safest approach is to read the token from localStorage directly as a fallback.
+The image will update automatically every 60 seconds when the token rotates.
 
-### Login.tsx - Reduce timeout
-Change line 38 timeout from 8000ms to 4000ms.
+**File**: `src/pages/HHADashboard.tsx`
 
-### Files to modify
+## 4. Business Dashboard Empty State
+
+Change line 240 of `BusinessDashboard.tsx` from "No donation campaigns yet" to "Donations sent to Bronx Home Care Services".
+
+**File**: `src/pages/BusinessDashboard.tsx`
+
+## Summary
+
 | File | Change |
 |------|--------|
-| `src/pages/HHADashboard.tsx` | Add timeout + REST fallback to `fetchClaims`, add SUPABASE constants |
-| `src/pages/Login.tsx` | Reduce login timeout from 8s to 4s |
+| `src/pages/HHADashboard.tsx` | `showNav={false}`, demo reset call, real QR code image |
+| `src/pages/BusinessDashboard.tsx` | `showNav={false}`, updated empty state message |
+| `src/pages/AdminDashboard.tsx` | `showNav={false}` |
+| `supabase/functions/reset-hha-demo/index.ts` | New edge function for demo reset |
+
+No styling files are touched -- your design (cream background, burgundy buttons, Quicksand/Inter fonts) stays exactly as-is.
 

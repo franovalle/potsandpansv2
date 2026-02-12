@@ -151,11 +151,11 @@ const BusinessDashboard = () => {
   };
 
   if (authLoading) {
-    return <Layout><DashboardHeader /><div className="container mx-auto px-4 py-12 text-center text-muted-foreground">Loading...</div></Layout>;
+    return <Layout showNav={false}><DashboardHeader /><div className="container mx-auto px-4 py-12 text-center text-muted-foreground">Loading...</div></Layout>;
   }
 
   return (
-    <Layout>
+    <Layout showNav={false}>
       <DashboardHeader />
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <h1 className="text-3xl font-bold font-heading mb-6 text-foreground">Business Dashboard</h1>
@@ -237,7 +237,7 @@ const BusinessDashboard = () => {
           </CardHeader>
           <CardContent>
             {campaigns.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">No donation campaigns yet</p>
+              <p className="text-muted-foreground text-center py-4">Donations sent to Bronx Home Care Services</p>
             ) : (
               <Table>
                 <TableHeader>

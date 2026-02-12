@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,6 +37,7 @@ const HHADashboard = () => {
   const [qrToken, setQrToken] = useState("");
   const [countdown, setCountdown] = useState(60);
   const [loadingData, setLoadingData] = useState(true);
+  const demoResetDone = useRef(false);
 
   useEffect(() => {
     if (!authLoading && (!user || role !== "hha")) {
@@ -65,7 +66,6 @@ const HHADashboard = () => {
       // Fallback: direct REST using token from localStorage
       try {
         let token: string | null = null;
-        // Read token from localStorage directly to avoid getSession() hang
         const keys = Object.keys(localStorage);
         const sbKey = keys.find((k) => k.startsWith("sb-") && k.endsWith("-auth-token"));
         if (sbKey) {
@@ -102,9 +102,28 @@ const HHADashboard = () => {
     setLoadingData(false);
   }, [user]);
 
+  // Demo reset: run once per session before fetching claims
   useEffect(() => {
-    fetchClaims();
-  }, [fetchClaims]);
+    if (!user || demoResetDone.current) return;
+    demoResetDone.current = true;
+
+    const resetAndFetch = async () => {
+      try {
+        await fetch(`${SUPABASE_URL}/functions/v1/reset-hha-demo`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ hha_id: user.id }),
+        });
+      } catch {
+        // ignore reset errors
+      }
+      fetchClaims();
+    };
+    resetAndFetch();
+  }, [user, fetchClaims]);
 
   // QR token rotation every 60 seconds
   useEffect(() => {
@@ -113,7 +132,6 @@ const HHADashboard = () => {
     const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          // Generate a display-only rotation (the real token stays the same for validation)
           setQrToken(activeClaim.token + "?" + Date.now());
           return 60;
         }
@@ -142,7 +160,7 @@ const HHADashboard = () => {
 
   if (authLoading || loadingData) {
     return (
-      <Layout>
+      <Layout showNav={false}>
         <DashboardHeader />
         <div className="container mx-auto px-4 py-12 text-center text-muted-foreground">Loading...</div>
       </Layout>
@@ -150,7 +168,7 @@ const HHADashboard = () => {
   }
 
   return (
-    <Layout>
+    <Layout showNav={false}>
       <DashboardHeader />
       <div className="container mx-auto px-4 py-8 max-w-2xl">
         <h1 className="text-3xl font-bold font-heading mb-6 text-foreground">HHA DASHBOARD</h1>
@@ -169,10 +187,13 @@ const HHADashboard = () => {
               <p className="text-lg font-semibold text-foreground">
                 {activeClaim.donation_campaigns?.item_name} from {activeClaim.donation_campaigns?.business_name}
               </p>
-              {/* QR Code display using a simple text-based approach */}
-              <div className="bg-foreground text-background p-6 rounded-xl inline-block mx-auto font-mono text-xs break-all max-w-xs">
-                <div className="mb-2 text-sm font-bold">QR TOKEN</div>
-                {qrToken.substring(0, 20)}...
+              {/* Scannable QR Code Image */}
+              <div className="flex justify-center">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrToken)}`}
+                  alt="QR Code for donation redemption"
+                  className="w-48 h-48 rounded-xl"
+                />
               </div>
               <div className="flex items-center justify-center gap-2 text-muted-foreground">
                 <Clock className="h-4 w-4" />

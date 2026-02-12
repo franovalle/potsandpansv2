@@ -110,11 +110,11 @@ const AdminDashboard = () => {
   };
 
   if (authLoading) {
-    return <Layout><DashboardHeader /><div className="container mx-auto px-4 py-12 text-center text-muted-foreground">Loading...</div></Layout>;
+    return <Layout showNav={false}><DashboardHeader /><div className="container mx-auto px-4 py-12 text-center text-muted-foreground">Loading...</div></Layout>;
   }
 
   return (
-    <Layout>
+    <Layout showNav={false}>
       <DashboardHeader />
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-3xl font-bold font-heading mb-6 text-foreground">Admin Dashboard</h1>

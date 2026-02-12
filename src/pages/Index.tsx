@@ -12,9 +12,6 @@ const Index = () => {
             <h1 className="text-4xl md:text-6xl font-bold font-heading text-foreground mb-6 leading-tight">
               Connecting businesses with Bronx healthcare heroes
             </h1>
-            <p className="text-lg md:text-xl text-muted-foreground mb-2 font-body">
-              Connecting caring businesses with the heroes who serve our community.
-            </p>
             <p className="text-sm text-muted-foreground mb-10 font-heading font-semibold tracking-wide">
               #itDoesntHaveToEnd · Est. 2025
             </p>

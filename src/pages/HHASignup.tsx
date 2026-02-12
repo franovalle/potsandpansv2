@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Layout from "@/components/Layout";
 import { toast } from "@/hooks/use-toast";
 
+const SUPABASE_URL = "https://dqvjkwrrxbtyziliyrkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxdmprd3JyeGJ0eXppbGl5cmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDgxNTIsImV4cCI6MjA4NjQyNDE1Mn0.D8s6cg-qS4jOI1LI71mQbzqf8zLwQGmBu8ssaEjFAYQ";
+
 const HHASignup = () => {
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
@@ -18,24 +21,50 @@ const HHASignup = () => {
   const [agencies, setAgencies] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingAgencies, setLoadingAgencies] = useState(true);
+  const [agencyError, setAgencyError] = useState(false);
+
+  const fetchAgencies = async () => {
+    setLoadingAgencies(true);
+    setAgencyError(false);
+
+    try {
+      // Try supabase client with 5s timeout
+      const result = await Promise.race([
+        supabase.from("agencies").select("id, name"),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+      ]);
+
+      if (result.error) throw result.error;
+      if (result.data) {
+        setAgencies(result.data);
+        setLoadingAgencies(false);
+        return;
+      }
+    } catch {
+      // Fallback: direct REST
+      try {
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/agencies?select=id,name`, {
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAgencies(data);
+          setLoadingAgencies(false);
+          return;
+        }
+      } catch {
+        // both failed
+      }
+    }
+
+    setAgencyError(true);
+    setLoadingAgencies(false);
+  };
 
   useEffect(() => {
-    const fetchAgencies = async () => {
-      try {
-        console.log("Fetching agencies...");
-        const { data, error } = await supabase.from("agencies").select("id, name");
-        console.log("Agencies response:", { data, error });
-        if (error) {
-          console.error("Error fetching agencies:", error);
-        } else if (data) {
-          setAgencies(data);
-        }
-      } catch (err) {
-        console.error("Unexpected error fetching agencies:", err);
-      } finally {
-        setLoadingAgencies(false);
-      }
-    };
     fetchAgencies();
   }, []);
 
@@ -43,19 +72,44 @@ const HHASignup = () => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const res = await supabase.functions.invoke("signup-hha", {
-        body: { full_name: fullName, agency_id: agencyId, email, password },
-      });
+    const body = { full_name: fullName, agency_id: agencyId, email, password };
 
-      if (res.error || res.data?.error) {
-        toast({ title: "Signup Failed", description: res.data?.error || "An error occurred", variant: "destructive" });
+    try {
+      const result = await Promise.race([
+        supabase.functions.invoke("signup-hha", { body }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
+
+      if (result.error || result.data?.error) {
+        toast({ title: "Signup Failed", description: result.data?.error || "An error occurred", variant: "destructive" });
       } else {
         toast({ title: "Account Created!", description: "You can now log in." });
         navigate("/login");
       }
     } catch {
-      toast({ title: "Error", description: "Something went wrong", variant: "destructive" });
+      // Fallback: direct fetch
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/signup-hha`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          toast({ title: "Signup Failed", description: data.error || "An error occurred", variant: "destructive" });
+        } else {
+          toast({ title: "Account Created!", description: "You can now log in." });
+          navigate("/login");
+        }
+      } catch {
+        toast({ title: "Error", description: "Something went wrong. Please try again.", variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }
@@ -77,14 +131,23 @@ const HHASignup = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="agency">Agency</Label>
-                <Select value={agencyId} onValueChange={setAgencyId} required disabled={loadingAgencies}>
-                  <SelectTrigger><SelectValue placeholder={loadingAgencies ? "Loading agencies..." : "Select your agency"} /></SelectTrigger>
-                  <SelectContent>
-                    {agencies.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {agencyError ? (
+                  <div className="text-sm text-destructive">
+                    Failed to load agencies.{" "}
+                    <button type="button" onClick={fetchAgencies} className="underline text-primary">
+                      Retry
+                    </button>
+                  </div>
+                ) : (
+                  <Select value={agencyId} onValueChange={setAgencyId} required disabled={loadingAgencies}>
+                    <SelectTrigger><SelectValue placeholder={loadingAgencies ? "Loading agencies..." : "Select your agency"} /></SelectTrigger>
+                    <SelectContent>
+                      {agencies.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>

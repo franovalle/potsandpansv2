@@ -8,6 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Layout from "@/components/Layout";
 import { toast } from "@/hooks/use-toast";
 
+const SUPABASE_URL = "https://dqvjkwrrxbtyziliyrkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxdmprd3JyeGJ0eXppbGl5cmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDgxNTIsImV4cCI6MjA4NjQyNDE1Mn0.D8s6cg-qS4jOI1LI71mQbzqf8zLwQGmBu8ssaEjFAYQ";
+
 const BusinessSignup = () => {
   const navigate = useNavigate();
   const [businessName, setBusinessName] = useState("");
@@ -20,19 +23,45 @@ const BusinessSignup = () => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const res = await supabase.functions.invoke("signup-business", {
-        body: { business_name: businessName, business_type: businessType, email, password },
-      });
+    const body = { business_name: businessName, business_type: businessType, email, password };
 
-      if (res.error || res.data?.error) {
-        toast({ title: "Signup Failed", description: res.data?.error || "An error occurred", variant: "destructive" });
+    try {
+      // Try supabase client with a 8s timeout
+      const result = await Promise.race([
+        supabase.functions.invoke("signup-business", { body }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
+
+      if (result.error || result.data?.error) {
+        toast({ title: "Signup Failed", description: result.data?.error || "An error occurred", variant: "destructive" });
       } else {
         toast({ title: "Account Created!", description: "You can now log in." });
         navigate("/login");
       }
     } catch {
-      toast({ title: "Error", description: "Something went wrong", variant: "destructive" });
+      // Fallback: direct fetch
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/signup-business`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || data.error) {
+          toast({ title: "Signup Failed", description: data.error || "An error occurred", variant: "destructive" });
+        } else {
+          toast({ title: "Account Created!", description: "You can now log in." });
+          navigate("/login");
+        }
+      } catch {
+        toast({ title: "Error", description: "Something went wrong. Please try again.", variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }

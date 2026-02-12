@@ -1,30 +1,52 @@
 
 
-# Fix Logout + Redirect Logged-in Users Away from Login
+# Fix Logout Button - For Real This Time
 
-## Problems
-1. **Logout button does nothing** -- `supabase.auth.signOut()` hangs silently (same client issue as login/signup). No timeout, no fallback, no navigation.
-2. **After logout, should go to landing page** -- Currently `signOut` clears state but never navigates anywhere.
-3. **Login page visible when already logged in** -- The redirect logic exists but depends on `role` being set, which can fail due to the same client issues.
+## Root Cause
+When `supabase.auth.signOut()` times out after 5 seconds, the fallback code on line 99 calls `supabase.auth.getSession()` to get the access token for a REST logout. But `getSession()` uses the same Supabase client that's hanging -- so it also hangs forever. The function never reaches the localStorage cleanup or state reset on lines 113-118, and `navigate("/")` in DashboardHeader never fires.
 
 ## Fix
 
-### 1. Fix signOut in AuthContext.tsx
-- Add timeout + direct REST fallback to `supabase.auth.signOut()` (POST to `/auth/v1/logout`)
-- Clear localStorage session manually as a safety net
-- This ensures state is always cleaned up even if the client hangs
+### File: `src/contexts/AuthContext.tsx`
 
-### 2. Add navigation after logout in DashboardHeader.tsx
-- Import `useNavigate` from react-router-dom
-- After `signOut()` completes, navigate to `/` (landing page)
+Remove the REST logout fallback entirely. It's unnecessary -- all we need to do is:
+1. Try `supabase.auth.signOut()` with a timeout
+2. If it fails/hangs, just clear localStorage and reset state directly
 
-### 3. Login page already redirects logged-in users
-- The existing `useEffect` on Login.tsx (lines 23-29) handles this when `user` and `role` are set. With the role fetch now fixed, this should work. No changes needed here.
+The server-side session will expire on its own. What matters is the user is logged out locally.
+
+**Replace the entire `signOut` function (lines 90-119) with:**
+
+```typescript
+const signOut = async () => {
+  try {
+    await Promise.race([
+      supabase.auth.signOut(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
+    ]);
+  } catch {
+    // Client hung or failed - that's fine, we'll clear locally
+  }
+  // Always clear state and storage regardless
+  Object.keys(localStorage).forEach((key) => {
+    if (key.startsWith("sb-")) localStorage.removeItem(key);
+  });
+  setUser(null);
+  setRole(null);
+};
+```
+
+Key changes:
+- Removed the fallback that calls `getSession()` (which also hangs)
+- Reduced timeout from 5s to 3s for faster response
+- The `catch` block is now empty -- we just fall through to cleanup
+- localStorage cleanup and state reset always run no matter what
+
+No changes needed to `DashboardHeader.tsx` -- it already has the correct `navigate("/")` call.
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/contexts/AuthContext.tsx` | Add timeout + REST fallback to `signOut`, clear localStorage |
-| `src/components/DashboardHeader.tsx` | Add `useNavigate`, redirect to `/` after signOut |
+| `src/contexts/AuthContext.tsx` | Simplify `signOut` to remove the hanging `getSession()` fallback |
 

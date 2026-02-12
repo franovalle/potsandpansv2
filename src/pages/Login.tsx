@@ -35,7 +35,7 @@ const Login = () => {
     try {
       const result = await Promise.race([
         supabase.auth.signInWithPassword({ email, password }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 4000)),
       ]);
       if (result.error) {
         toast({ title: "Login Failed", description: result.error.message, variant: "destructive" });

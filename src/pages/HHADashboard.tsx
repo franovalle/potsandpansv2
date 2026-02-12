@@ -9,6 +9,9 @@ import DashboardHeader from "@/components/DashboardHeader";
 import { toast } from "@/hooks/use-toast";
 import { Heart, Clock, Gift, CheckCircle } from "lucide-react";
 
+const SUPABASE_URL = "https://dqvjkwrrxbtyziliyrkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxdmprd3JyeGJ0eXppbGl5cmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDgxNTIsImV4cCI6MjA4NjQyNDE1Mn0.D8s6cg-qS4jOI1LI71mQbzqf8zLwQGmBu8ssaEjFAYQ";
+
 interface ClaimWithCampaign {
   id: string;
   campaign_id: string;
@@ -45,11 +48,48 @@ const HHADashboard = () => {
     if (!user) return;
     setLoadingData(true);
 
-    const { data: claims } = await supabase
-      .from("donation_claims")
-      .select("*, donation_campaigns(*)")
-      .eq("hha_id", user.id)
-      .order("created_at", { ascending: false });
+    let claims: any[] | null = null;
+
+    // Try Supabase client with timeout
+    try {
+      const result = await Promise.race([
+        supabase
+          .from("donation_claims")
+          .select("*, donation_campaigns(*)")
+          .eq("hha_id", user.id)
+          .order("created_at", { ascending: false }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+      ]);
+      claims = result.data;
+    } catch {
+      // Fallback: direct REST using token from localStorage
+      try {
+        let token: string | null = null;
+        // Read token from localStorage directly to avoid getSession() hang
+        const keys = Object.keys(localStorage);
+        const sbKey = keys.find((k) => k.startsWith("sb-") && k.endsWith("-auth-token"));
+        if (sbKey) {
+          try {
+            const stored = JSON.parse(localStorage.getItem(sbKey) || "");
+            token = stored?.access_token || null;
+          } catch { /* ignore parse error */ }
+        }
+        if (token) {
+          const res = await fetch(
+            `${SUPABASE_URL}/rest/v1/donation_claims?select=*,donation_campaigns(*)&hha_id=eq.${user.id}&order=created_at.desc`,
+            {
+              headers: {
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+          if (res.ok) claims = await res.json();
+        }
+      } catch {
+        // both failed
+      }
+    }
 
     if (claims) {
       const typed = claims as unknown as ClaimWithCampaign[];

@@ -1,61 +1,78 @@
 
 
-# Fix Business Signup + Remove Subtitle
+# Fix Login Hanging on "Logging in..."
 
-## Problems
-1. **Business signup hangs on "Creating Account..."** -- The `supabase.functions.invoke("signup-business")` call never produces a network request, meaning the Supabase client is not functioning. The button stays disabled with "Creating Account..." forever.
-2. **Landing page subtitle** still shows "Connecting caring businesses with the heroes who serve our community." and needs to be removed.
-
-## Root Cause
-The Supabase client is created with `import.meta.env.VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. If these are undefined at runtime, the client silently hangs on all operations (no error, no request). This affects both the Business Signup edge function call and the HHA Signup agency fetch.
+## Problem
+Login authentication succeeds (server returns 200 with access token), but the app never redirects to the dashboard. The `fetchRole()` function in `AuthContext.tsx` uses `supabase.from("user_roles").select(...)` which hangs silently, so `role` is never set and the Login page redirect never fires.
 
 ## Fix
+Apply the same timeout + direct REST API fallback pattern to `AuthContext.tsx` that was already applied to the signup pages.
 
-### 1. Add direct REST API fallback to BusinessSignup.tsx
-Instead of relying solely on `supabase.functions.invoke()`, add a timeout and fallback using a direct `fetch()` call to the edge function URL:
+## Technical Details
 
+### File: `src/contexts/AuthContext.tsx`
+
+Update the `fetchRole` function (lines 28-35):
+
+**Current code:**
 ```typescript
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 10000);
-
-try {
-  // Try Supabase client first
-  const res = await supabase.functions.invoke("signup-business", {
-    body: { business_name, business_type, email, password },
-  });
-  clearTimeout(timeout);
-  // handle response...
-} catch {
-  // Fallback: direct fetch to edge function
-  const response = await fetch(
-    `https://dqvjkwrrxbtyziliyrkh.supabase.co/functions/v1/signup-business`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": "...",
-        "Authorization": "Bearer ..."
-      },
-      body: JSON.stringify({ business_name, business_type, email, password }),
-    }
-  );
-  // handle response...
-}
+const fetchRole = async (userId: string) => {
+  const { data } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .maybeSingle();
+  setRole((data?.role as AppRole) || null);
+};
 ```
 
-### 2. Same fallback pattern for HHASignup.tsx
-Apply the same timeout + direct REST fallback for:
-- The agency dropdown fetch (`supabase.from("agencies").select(...)`)
-- The signup call (`supabase.functions.invoke("signup-hha", ...)`)
+**New code:**
+```typescript
+const SUPABASE_URL = "https://dqvjkwrrxbtyziliyrkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIs...";
 
-### 3. Remove subtitle from Index.tsx
-Delete line 15-17 (the `<p>` tag with "Connecting caring businesses with the heroes who serve our community.").
+const fetchRole = async (userId: string) => {
+  try {
+    // Try supabase client with 5s timeout
+    const result = await Promise.race([
+      supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+    ]);
+    if (result.data) {
+      setRole((result.data.role as AppRole) || null);
+      return;
+    }
+  } catch {
+    // Fallback: direct REST call
+  }
 
-## Files to Modify
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/user_roles?select=role&user_id=eq.${userId}&limit=1`,
+      {
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      }
+    );
+    if (response.ok) {
+      const data = await response.json();
+      setRole((data?.[0]?.role as AppRole) || null);
+      return;
+    }
+  } catch {
+    // both failed
+  }
+  setRole(null);
+};
+```
 
+### Also add the same fallback to `Login.tsx`
+The `supabase.auth.signInWithPassword` call also uses the Supabase client. Add a timeout + direct REST fallback for the login call itself, posting to `${SUPABASE_URL}/auth/v1/token?grant_type=password` as a fallback, and then manually triggering `fetchRole` via the auth state change.
+
+### Files to modify
 | File | Change |
 |------|--------|
-| `src/pages/BusinessSignup.tsx` | Add timeout + direct fetch fallback for signup call |
-| `src/pages/HHASignup.tsx` | Add timeout + direct fetch fallback for agency fetch and signup call |
-| `src/pages/Index.tsx` | Remove subtitle paragraph (lines 15-17) |
-
+| `src/contexts/AuthContext.tsx` | Add timeout + REST fallback to `fetchRole` |
+| `src/pages/Login.tsx` | Add timeout + REST fallback to `signInWithPassword` call |

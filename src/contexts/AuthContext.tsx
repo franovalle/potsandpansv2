@@ -91,26 +91,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await Promise.race([
         supabase.auth.signOut(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
       ]);
     } catch {
-      // Fallback: direct REST logout
-      try {
-        const session = (await supabase.auth.getSession()).data.session;
-        if (session?.access_token) {
-          await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-            method: "POST",
-            headers: {
-              apikey: SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          });
-        }
-      } catch {
-        // ignore
-      }
+      // Client hung or failed - that's fine, we'll clear locally
     }
-    // Always clear state and storage
+    // Always clear state and storage regardless
     Object.keys(localStorage).forEach((key) => {
       if (key.startsWith("sb-")) localStorage.removeItem(key);
     });

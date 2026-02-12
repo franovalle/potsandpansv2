@@ -1,52 +1,93 @@
 
 
-# Fix Logout Button - For Real This Time
+# Fix HHA Dashboard Loading + Speed Up Login
 
-## Root Cause
-When `supabase.auth.signOut()` times out after 5 seconds, the fallback code on line 99 calls `supabase.auth.getSession()` to get the access token for a REST logout. But `getSession()` uses the same Supabase client that's hanging -- so it also hangs forever. The function never reaches the localStorage cleanup or state reset on lines 113-118, and `navigate("/")` in DashboardHeader never fires.
+## Problem 1: HHA Dashboard Stuck on "Loading"
+The dashboard calls `supabase.from("donation_claims").select(...)` which uses the same Supabase client that hangs. There's no timeout or REST fallback, so `loadingData` never becomes `false`.
 
-## Fix
+## Problem 2: Login Timeout Too Long
+The login page waits 8 seconds before trying the REST fallback. This feels unresponsive.
+
+## Fixes
+
+### File: `src/pages/HHADashboard.tsx`
+- Add a `Promise.race` timeout (5s) around the Supabase query in `fetchClaims`
+- Add a REST API fallback that fetches claims directly via `fetch()` using the user's access token
+- If both fail, set `loadingData` to `false` anyway so the user sees the "no donations" state instead of infinite loading
+
+### File: `src/pages/Login.tsx`
+- Reduce the login timeout from 8 seconds to 4 seconds so the REST fallback kicks in faster
 
 ### File: `src/contexts/AuthContext.tsx`
+- No changes needed -- signOut and fetchRole are already fixed
 
-Remove the REST logout fallback entirely. It's unnecessary -- all we need to do is:
-1. Try `supabase.auth.signOut()` with a timeout
-2. If it fails/hangs, just clear localStorage and reset state directly
+## Technical Details
 
-The server-side session will expire on its own. What matters is the user is logged out locally.
-
-**Replace the entire `signOut` function (lines 90-119) with:**
+### HHADashboard.tsx - fetchClaims with timeout + fallback
 
 ```typescript
-const signOut = async () => {
+const fetchClaims = useCallback(async () => {
+  if (!user) return;
+  setLoadingData(true);
+
+  let claims: any[] | null = null;
+
+  // Try Supabase client with timeout
   try {
-    await Promise.race([
-      supabase.auth.signOut(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000)),
+    const result = await Promise.race([
+      supabase
+        .from("donation_claims")
+        .select("*, donation_campaigns(*)")
+        .eq("hha_id", user.id)
+        .order("created_at", { ascending: false }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
     ]);
+    claims = result.data;
   } catch {
-    // Client hung or failed - that's fine, we'll clear locally
+    // Fallback: direct REST
+    try {
+      const session = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(), 2000)),
+      ]);
+      const token = session?.data?.session?.access_token;
+      if (token) {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/donation_claims?select=*,donation_campaigns(*)&hha_id=eq.${user.id}&order=created_at.desc`,
+          {
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        if (res.ok) claims = await res.json();
+      }
+    } catch {
+      // both failed
+    }
   }
-  // Always clear state and storage regardless
-  Object.keys(localStorage).forEach((key) => {
-    if (key.startsWith("sb-")) localStorage.removeItem(key);
-  });
-  setUser(null);
-  setRole(null);
-};
+
+  if (claims) {
+    const typed = claims as unknown as ClaimWithCampaign[];
+    setPendingClaim(typed.find((c) => c.status === "pending") || null);
+    const active = typed.find((c) => c.status === "claimed");
+    setActiveClaim(active || null);
+    if (active) setQrToken(active.token);
+    setHistory(typed.filter((c) => c.status === "redeemed" || c.status === "expired"));
+  }
+  setLoadingData(false);
+}, [user]);
 ```
 
-Key changes:
-- Removed the fallback that calls `getSession()` (which also hangs)
-- Reduced timeout from 5s to 3s for faster response
-- The `catch` block is now empty -- we just fall through to cleanup
-- localStorage cleanup and state reset always run no matter what
+The REST fallback needs the access token. Instead of calling `getSession()` (which can also hang), we'll store the token from AuthContext. Actually, since `getSession` can hang too, the safest approach is to read the token from localStorage directly as a fallback.
 
-No changes needed to `DashboardHeader.tsx` -- it already has the correct `navigate("/")` call.
+### Login.tsx - Reduce timeout
+Change line 38 timeout from 8000ms to 4000ms.
 
-## Files to Modify
-
+### Files to modify
 | File | Change |
 |------|--------|
-| `src/contexts/AuthContext.tsx` | Simplify `signOut` to remove the hanging `getSession()` fallback |
+| `src/pages/HHADashboard.tsx` | Add timeout + REST fallback to `fetchClaims`, add SUPABASE constants |
+| `src/pages/Login.tsx` | Reduce login timeout from 8s to 4s |
 

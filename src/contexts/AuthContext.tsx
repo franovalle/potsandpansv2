@@ -4,6 +4,9 @@ import type { User } from "@supabase/supabase-js";
 
 type AppRole = "hha" | "business" | "admin";
 
+const SUPABASE_URL = "https://dqvjkwrrxbtyziliyrkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxdmprd3JyeGJ0eXppbGl5cmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDgxNTIsImV4cCI6MjA4NjQyNDE1Mn0.D8s6cg-qS4jOI1LI71mQbzqf8zLwQGmBu8ssaEjFAYQ";
+
 interface AuthContextType {
   user: User | null;
   role: AppRole | null;
@@ -26,12 +29,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const fetchRole = async (userId: string) => {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .maybeSingle();
-    setRole((data?.role as AppRole) || null);
+    try {
+      const result = await Promise.race([
+        supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+      ]);
+      if (result.data) {
+        setRole((result.data.role as AppRole) || null);
+        return;
+      }
+    } catch {
+      // Fallback: direct REST call
+    }
+
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/rest/v1/user_roles?select=role&user_id=eq.${userId}&limit=1`,
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setRole((data?.[0]?.role as AppRole) || null);
+        return;
+      }
+    } catch {
+      // both failed
+    }
+    setRole(null);
   };
 
   useEffect(() => {

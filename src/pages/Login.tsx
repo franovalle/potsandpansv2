@@ -10,6 +10,9 @@ import Layout from "@/components/Layout";
 import { toast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 
+const SUPABASE_URL = "https://dqvjkwrrxbtyziliyrkh.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRxdmprd3JyeGJ0eXppbGl5cmtoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA4NDgxNTIsImV4cCI6MjA4NjQyNDE1Mn0.D8s6cg-qS4jOI1LI71mQbzqf8zLwQGmBu8ssaEjFAYQ";
+
 const Login = () => {
   const navigate = useNavigate();
   const { user, role, loading: authLoading } = useAuth();
@@ -29,9 +32,41 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast({ title: "Login Failed", description: error.message, variant: "destructive" });
+    try {
+      const result = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000)),
+      ]);
+      if (result.error) {
+        toast({ title: "Login Failed", description: result.error.message, variant: "destructive" });
+      }
+    } catch {
+      // Fallback: direct REST login
+      try {
+        const response = await fetch(
+          `${SUPABASE_URL}/auth/v1/token?grant_type=password`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({ email, password }),
+          }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          toast({ title: "Login Failed", description: data.error_description || data.msg || "Invalid credentials", variant: "destructive" });
+        } else {
+          // Set session manually
+          await supabase.auth.setSession({
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+          });
+        }
+      } catch {
+        toast({ title: "Error", description: "Unable to connect. Please try again.", variant: "destructive" });
+      }
     }
     setLoading(false);
   };

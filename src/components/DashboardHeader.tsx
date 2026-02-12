@@ -1,11 +1,12 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import logo from "@/assets/logo.png";
 
 const DashboardHeader = () => {
   const { signOut, role } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-50">
@@ -17,7 +18,7 @@ const DashboardHeader = () => {
           <span className="text-sm text-muted-foreground font-medium px-3 py-1 rounded-full bg-secondary">
             {role === "hha" ? "HHA" : role === "admin" ? "Admin" : role === "business" ? "Business" : role}
           </span>
-          <Button variant="ghost" size="sm" onClick={signOut} className="gap-2">
+          <Button variant="ghost" size="sm" onClick={async () => { await signOut(); navigate("/"); }} className="gap-2">
             <LogOut className="h-4 w-4" />
             Log Out
           </Button>

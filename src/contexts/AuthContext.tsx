@@ -88,7 +88,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
+      ]);
+    } catch {
+      // Fallback: direct REST logout
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        if (session?.access_token) {
+          await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+    // Always clear state and storage
+    Object.keys(localStorage).forEach((key) => {
+      if (key.startsWith("sb-")) localStorage.removeItem(key);
+    });
     setUser(null);
     setRole(null);
   };

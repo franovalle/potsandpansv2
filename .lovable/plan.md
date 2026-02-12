@@ -1,41 +1,30 @@
 
 
-# Fix Login - Role Fetch Using Wrong Credentials
+# Fix Logout + Redirect Logged-in Users Away from Login
 
-## The Real Problem
-The roles exist in the database for both users. The login itself succeeds. But the REST API fallback in `fetchRole()` sends the **anon key** as the Authorization token. The `user_roles` table has RLS policies that only allow **authenticated** users to read their own role. So the fallback always returns an empty array `[]`, the role is never set, and the redirect never fires.
+## Problems
+1. **Logout button does nothing** -- `supabase.auth.signOut()` hangs silently (same client issue as login/signup). No timeout, no fallback, no navigation.
+2. **After logout, should go to landing page** -- Currently `signOut` clears state but never navigates anywhere.
+3. **Login page visible when already logged in** -- The redirect logic exists but depends on `role` being set, which can fail due to the same client issues.
 
-## The Fix
-Pass the user's actual **access token** to `fetchRole()` and use it in the REST fallback's Authorization header.
+## Fix
 
-## Technical Details
+### 1. Fix signOut in AuthContext.tsx
+- Add timeout + direct REST fallback to `supabase.auth.signOut()` (POST to `/auth/v1/logout`)
+- Clear localStorage session manually as a safety net
+- This ensures state is always cleaned up even if the client hangs
 
-### File: `src/contexts/AuthContext.tsx`
+### 2. Add navigation after logout in DashboardHeader.tsx
+- Import `useNavigate` from react-router-dom
+- After `signOut()` completes, navigate to `/` (landing page)
 
-1. Change `fetchRole` to accept an access token parameter:
-   ```typescript
-   const fetchRole = async (userId: string, accessToken?: string) => {
-   ```
+### 3. Login page already redirects logged-in users
+- The existing `useEffect` on Login.tsx (lines 23-29) handles this when `user` and `role` are set. With the role fetch now fixed, this should work. No changes needed here.
 
-2. In the REST fallback, use the access token instead of anon key for Authorization:
-   ```typescript
-   headers: {
-     apikey: SUPABASE_ANON_KEY,
-     Authorization: `Bearer ${accessToken || SUPABASE_ANON_KEY}`,
-   }
-   ```
+## Files to Modify
 
-3. Update both call sites (`onAuthStateChange` and `getSession`) to pass `session.access_token`:
-   ```typescript
-   await fetchRole(currentUser.id, session?.access_token);
-   ```
-
-### File: `src/pages/Login.tsx`
-
-4. In the direct REST login fallback, after `setSession` succeeds, the `onAuthStateChange` listener will fire and call `fetchRole` with the correct token -- no additional changes needed here beyond what's already done.
-
-### Files to modify
 | File | Change |
 |------|--------|
-| `src/contexts/AuthContext.tsx` | Pass access token to `fetchRole`, use it in REST fallback Authorization header |
+| `src/contexts/AuthContext.tsx` | Add timeout + REST fallback to `signOut`, clear localStorage |
+| `src/components/DashboardHeader.tsx` | Add `useNavigate`, redirect to `/` after signOut |
 

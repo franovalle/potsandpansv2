@@ -1,6 +1,6 @@
-# Pots and Pans 🍳
+# Pots and Pans
 
-**Connecting Bronx businesses with Home Health Aides through verified donation campaigns and QR-code redemption.**
+**Connecting Bronx businesses with Home Health Aides through verified donation campaigns.**
 
 ## Problem
 
@@ -13,7 +13,7 @@ Pots and Pans is a web platform where businesses create donation campaigns, an a
 ### How It Works
 
 1. **Admin** adds home care agencies and uploads employee rosters
-2. **Businesses** sign up and create donation campaigns (e.g., "10 Chicken Sandwiches")
+2. **Businesses** sign up and create donation campaigns 
 3. The system **fairly distributes** donations to eligible HHAs — prioritizing those who haven't received one yet
 4. **HHAs** claim their donation, receive a rotating QR code, and present it at the business
 5. **Businesses** scan/validate the QR code to complete redemption

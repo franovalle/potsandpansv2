@@ -1,73 +1,83 @@
-# Welcome to your Lovable project
+# Pots and Pans 🍳
 
-## Project info
+**Connecting Bronx businesses with Home Health Aides through verified donation campaigns and QR-code redemption.**
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Problem
 
-## How can I edit this code?
+Home Health Aides (HHAs) in the Bronx are undervalued and under-supported. Local businesses want to help but lack a streamlined way to donate goods directly to verified HHAs.
 
-There are several ways of editing your application.
+## Solution
 
-**Use Lovable**
+Pots and Pans is a web platform where businesses create donation campaigns, an admin manages agency rosters, and HHAs claim and redeem donations via scannable QR codes — ensuring fair, verifiable distribution.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### How It Works
 
-Changes made via Lovable will be committed automatically to this repo.
+1. **Admin** adds home care agencies and uploads employee rosters
+2. **Businesses** sign up and create donation campaigns (e.g., "10 Chicken Sandwiches")
+3. The system **fairly distributes** donations to eligible HHAs — prioritizing those who haven't received one yet
+4. **HHAs** claim their donation, receive a rotating QR code, and present it at the business
+5. **Businesses** scan/validate the QR code to complete redemption
 
-**Use your preferred IDE**
+## Tech Stack
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui (Radix primitives) |
+| Backend | Supabase — Postgres, Auth, Edge Functions (Deno) |
+| State Management | TanStack React Query |
+| Routing | React Router v6 |
+| Charts | Recharts |
+| Date Utilities | date-fns |
+| QR Generation | [QR Server API](https://goqr.me/api/) (api.qrserver.com) |
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Setup
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
+```bash
+# 1. Clone the repository
 git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
 
-# Step 3: Install the necessary dependencies.
-npm i
+# 2. Install dependencies
+npm install
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# 3. Configure environment variables
+#    Create a .env file with:
+#    VITE_SUPABASE_URL=<your-supabase-url>
+#    VITE_SUPABASE_PUBLISHABLE_KEY=<your-supabase-anon-key>
+
+# 4. Run database migrations
+#    Apply all files in supabase/migrations/ via Supabase dashboard or CLI
+
+# 5. Deploy edge functions
+npx supabase functions deploy
+
+# 6. Seed the admin account
+curl -X POST <SUPABASE_URL>/functions/v1/seed-admin
+
+# 7. Start the dev server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+## Project Structure
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```
+src/
+├── components/       # Shared UI components (Layout, DashboardHeader, shadcn/ui)
+├── contexts/         # AuthContext for session management
+├── hooks/            # Custom hooks (use-mobile, use-toast)
+├── integrations/     # Supabase client and auto-generated types
+├── pages/            # Route pages (Login, Signup, Dashboards)
+supabase/
+├── functions/        # Edge functions (signup, claim, validate, distribute, reset)
+├── migrations/       # SQL migration files
+```
 
-**Use GitHub Codespaces**
+## Documentation
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — System design, data flow, and component descriptions
+- [EXPLANATION.md](./EXPLANATION.md) — Reasoning, memory usage, and known limitations
+- [DEMO.md](./DEMO.md) — Step-by-step demo walkthrough
 
-## What technologies are used for this project?
+## Live
 
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+**Published at**: [https://potsandpans.lovable.app](https://potsandpans.lovable.app)

@@ -1,58 +1,120 @@
+# Create GitHub Documentation Files
 
+## Overview
 
-# Fix Navigation, Add Demo Reset, QR Code Image, and Business Message
+Create four documentation files (README.md, ARCHITECTURE.md, EXPLANATION.md, DEMO.md) in the root of the repo that describe Pots and Pans -- a platform connecting Bronx businesses with Home Health Aides through a donation and QR-code redemption system.
 
-## 1. Navigation Fix -- Remove Duplicate Headers
+---
 
-All three dashboard pages (HHA, Business, Admin) currently render both `<Layout>` (which shows a header with "Log In" link) AND `<DashboardHeader>` (which shows logo + "Log Out"). This creates duplicate logos and shows "Log In" to logged-in users.
+## 1. README.md (replace existing)
 
-**Fix**: Pass `showNav={false}` to `<Layout>` in all dashboard pages so only `DashboardHeader` (with logo + Log Out) is visible.
+Will include:
 
-**Files**:
-- `src/pages/HHADashboard.tsx` -- change `<Layout>` to `<Layout showNav={false}>` (3 occurrences: loading state and main return)
-- `src/pages/BusinessDashboard.tsx` -- change `<Layout>` to `<Layout showNav={false}>` (2 occurrences)
-- `src/pages/AdminDashboard.tsx` -- change `<Layout>` to `<Layout showNav={false}>` (2 occurrences)
+**Problem Statement**: Home Health Aides in the Bronx are undervalued and under-supported. Local businesses want to help but lack a streamlined way to donate goods directly to verified HHAs.
 
-## 2. HHA Demo Reset -- Fresh Donation Every Login
+**Solution**: Pots and Pans is a web platform where businesses create donation campaigns, an admin manages agency rosters, and HHAs claim and redeem donations via scannable QR codes -- ensuring fair, verifiable distribution.
 
-Create a new edge function `reset-hha-demo` that:
-- Accepts the HHA user's ID
-- Deletes all existing `donation_claims` for that user
-- Finds the active "Chicken Sandwich" campaign from "Bronx Deli"
-- Creates a fresh `pending` claim with a new token and 3-day expiry
+**Tech Stack and Dependencies**:
 
-In `HHADashboard.tsx`, call this function once before fetching claims (using a `useRef` flag to prevent repeated calls within the same session).
+- Frontend: React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui (Radix primitives)
+- Backend: Supabase (Postgres + Auth + Edge Functions via Deno)
+- Key libraries: React Router, TanStack Query, Recharts, date-fns
+- QR generation: External API (api.qrserver.com)
 
-**Files**:
-- New: `supabase/functions/reset-hha-demo/index.ts`
-- Modified: `src/pages/HHADashboard.tsx` -- add reset call before `fetchClaims`
+**Setup Instructions**:
 
-## 3. QR Code -- Real Scannable Image
+- Clone, `npm install`, `npm run dev`
+- Environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY)
+- Database setup via Supabase migrations
+- Edge function deployment
+  &nbsp;
 
-Replace the text-based token display (lines 172-176 of HHADashboard.tsx) with an actual QR code image using the free QR Server API:
+---
+
+## 2. ARCHITECTURE.md
+
+Will include an ASCII system diagram and descriptions of:
+
+**System Design Diagram** (ASCII art):
 
 ```
-https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={token}
+User Browser (React SPA)
+    |
+    v
+Supabase Auth --> user_roles table --> role-based routing
+    |
+    v
+Supabase Postgres (RLS-protected tables)
+  - agencies, rosters, hha_profiles, business_profiles
+  - donation_campaigns, donation_claims, user_roles
+    |
+    v
+Supabase Edge Functions (Deno)
+  - seed-admin: bootstrap admin account
+  - signup-hha: roster-verified HHA registration
+  - signup-business: business registration + auto-campaign for "Bronx Deli"
+  - distribute-donations: fair distribution algorithm
+  - claim-donation: claim with token generation
+  - validate-qr: redeem via QR token
+  - reset-hha-demo: demo state reset
+    |
+    v
+External: QR Server API (image generation)
 ```
 
-The image will update automatically every 60 seconds when the token rotates.
+**Planner / Executor**: Edge functions act as the executor layer -- each handles one discrete action (signup, claim, validate, distribute). The planner logic lives in the business signup function which orchestrates campaign creation and distribution in sequence.
 
-**File**: `src/pages/HHADashboard.tsx`
+**Memory Structure**: Supabase Postgres with 7 tables. `donation_claims` tracks the full lifecycle (pending -> claimed -> redeemed/expired) with tokens, timestamps, and expiry windows.
 
-## 4. Business Dashboard Empty State
+**Tool Integrations**: QR Server API for scannable QR code images; Supabase Auth for authentication; RLS policies for row-level security.
 
-Change line 240 of `BusinessDashboard.tsx` from "No donation campaigns yet" to "Donations sent to Bronx Home Care Services".
+**Logging and Observability**: Edge function logs via Supabase dashboard; client-side toast notifications for user feedback; resilient fallback pattern (Supabase client -> direct REST) with timeouts for reliability.
 
-**File**: `src/pages/BusinessDashboard.tsx`
+---
 
-## Summary
+## 3. EXPLANATION.md
 
-| File | Change |
-|------|--------|
-| `src/pages/HHADashboard.tsx` | `showNav={false}`, demo reset call, real QR code image |
-| `src/pages/BusinessDashboard.tsx` | `showNav={false}`, updated empty state message |
-| `src/pages/AdminDashboard.tsx` | `showNav={false}` |
-| `supabase/functions/reset-hha-demo/index.ts` | New edge function for demo reset |
+Will describe:
 
-No styling files are touched -- your design (cream background, burgundy buttons, Quicksand/Inter fonts) stays exactly as-is.
+**Reasoning Process**: Role-based architecture (HHA, Business, Admin) drives all access control and UI routing. Each role has a dedicated signup flow, dashboard, and set of permitted actions.
 
+**Memory Usage**: The database serves as persistent memory. `donation_claims` with status field tracks the full donation lifecycle. The `reset-hha-demo` function provides "memory reset" for repeatable demos. `useRef` flags prevent duplicate calls within a session.
+
+**Planning Style**: Sequential orchestration -- business signup triggers campaign creation, which triggers fair distribution. The distribution algorithm prioritizes HHAs who have never received donations, then sorts by longest time since last donation.
+
+**Tool Integration**: 
+
+- Supabase Auth for identity
+- Edge Functions for secure server-side logic (service role key never exposed to client)
+- QR Server API for generating scannable images from tokens
+- Resilient fallback pattern: every network call tries the Supabase JS client first (with timeout), then falls back to direct REST fetch
+
+**Known Limitations**:
+
+- QR code relies on external third-party API (api.qrserver.com) -- no offline fallback
+- Demo reset deletes all claims for the user, not just demo ones
+- No real camera-based QR scanning -- business must manually paste the token
+- No email notifications for new donations
+- Single admin account bootstrapped via edge function
+- No pagination on dashboard queries (Supabase 1000-row default limit)
+
+---
+
+## 4. DEMO.md
+
+&nbsp;
+
+---
+
+## Technical Details
+
+
+| File              | Action           | Approximate Length |
+| ----------------- | ---------------- | ------------------ |
+| `README.md`       | Replace existing | ~80 lines          |
+| `ARCHITECTURE.md` | New file         | ~100 lines         |
+| `EXPLANATION.md`  | New file         | ~90 lines          |
+| `DEMO.md`         | New file         | ~70 lines          |
+
+
+No code changes -- only documentation files.
